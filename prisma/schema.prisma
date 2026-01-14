@@ -1,0 +1,37 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              String   @id @default(uuid())
+  telegramUserId  BigInt   @unique @map("telegram_user_id")
+  username        String?
+  firstName       String   @map("first_name")
+  languagePref    String   @default("auto") @map("language_pref")
+  createdAt       DateTime @default(now()) @map("created_at")
+  
+  transactions    Transaction[]
+  
+  @@map("users")
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  amountCents Int      @map("amount_cents")
+  currency    String   @default("THB")
+  category    String
+  description String?
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  user        User     @relation(fields: [userId], references: [id])
+  
+  @@index([userId, occurredAt(sort: Desc)])
+  @@index([userId, category, occurredAt])
+  @@map("transactions")
+}
