@@ -1,10 +1,11 @@
 import "dotenv/config";
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, webhookCallback } from "grammy";
 import { parseExpense } from "./src/parser.js";
 import { getCategoryDisplay } from "./src/categories.js";
 import { prisma, ensureUser } from "./src/db.js";
 import { startOfDay, startOfWeek, startOfMonth, endOfDay } from "date-fns";
 import type { Transaction } from "@prisma/client";
+import express from "express";
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 
@@ -264,4 +265,34 @@ async function handleUndo(ctx: any) {
   await ctx.reply(`ยกเลิกแล้ว ❌ ${display.en} ${amt}${desc}`);
 }
 
-bot.start();
+// Webhook setup
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Health check endpoint
+app.get("/", (req, res) => {
+  res.send("Bot is running!");
+});
+
+// Webhook endpoint
+app.use(express.json());
+app.use(`/${process.env.BOT_TOKEN}`, webhookCallback(bot, "express"));
+
+// Start server
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+
+  // Auto-detect webhook URL from Render environment
+  // RENDER_EXTERNAL_URL is automatically set by Render
+  const webhookUrl = process.env.WEBHOOK_URL || 
+                     (process.env.RENDER_EXTERNAL_URL 
+                       ? `${process.env.RENDER_EXTERNAL_URL}/${process.env.BOT_TOKEN}`
+                       : undefined);
+  
+  if (webhookUrl) {
+    await bot.api.setWebhook(webhookUrl);
+    console.log(`✅ Webhook set to: ${webhookUrl}`);
+  } else {
+    console.log('⚠️  No webhook URL set - running in polling mode for local dev');
+  }
+});
