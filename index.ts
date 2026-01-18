@@ -9,6 +9,26 @@ import express from "express";
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 
+// Global bot error handler to avoid crashing the process on unhandled bot errors
+bot.catch((err) => {
+  console.error("Bot error:", err);
+});
+
+// Middleware to log incoming updates and handler outcomes
+bot.use(async (ctx, next) => {
+  try {
+    const uid = ctx.update?.update_id ?? 'unknown';
+    const from = ctx.from ? `${ctx.from.id} ${ctx.from.first_name}` : 'unknown';
+    const text = (ctx.message && 'text' in ctx.message) ? ctx.message.text : undefined;
+    console.log(`[Bot] Incoming update id=${uid} from=${from} text=${text}`);
+    await next();
+    console.log(`[Bot] Finished handling update id=${uid}`);
+  } catch (err) {
+    console.error('[Bot] Error in middleware while handling update:', err);
+    throw err;
+  }
+});
+
 // Help message
 const HELP_MESSAGE = `
 🤖 **Expense Bot - คู่มือการใช้งาน**
@@ -276,11 +296,18 @@ app.get("/", (req, res) => {
 
 // Webhook endpoint
 app.use(express.json());
-app.use(`/${process.env.BOT_TOKEN}`, webhookCallback(bot, "express"));
 
 // Start server
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+
+  // Attempt to connect to the database and log status
+  try {
+    await prisma.$connect();
+    console.log('✅ Connected to database');
+  } catch (err) {
+    console.error('❌ Database connection failed:', err);
+  }
 
   // Auto-detect webhook URL from Render environment
   // RENDER_EXTERNAL_URL is automatically set by Render
@@ -290,9 +317,14 @@ app.listen(PORT, async () => {
                        : undefined);
   
   if (webhookUrl) {
+    // Register webhook route to receive updates from Telegram
+    app.use(`/${process.env.BOT_TOKEN}`, webhookCallback(bot, "express"));
+
     await bot.api.setWebhook(webhookUrl);
     console.log(`✅ Webhook set to: ${webhookUrl}`);
   } else {
     console.log('⚠️  No webhook URL set - running in polling mode for local dev');
+    await bot.start();
+    console.log('✅ Bot started in polling mode (getUpdates)');
   }
 });

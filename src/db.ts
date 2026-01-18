@@ -12,16 +12,24 @@ export async function ensureUser(
   firstName: string,
   username?: string
 ) {
-  return await prisma.user.upsert({
-    where: { telegramUserId: BigInt(telegramUserId) },
-    update: {
-      firstName,
-      username: username || null,
-    },
-    create: {
-      telegramUserId: BigInt(telegramUserId),
-      firstName,
-      username: username || null,
-    },
-  });
+  console.log(`[DB] ensureUser called - telegramUserId=${telegramUserId}, firstName=${firstName}, username=${username}`);
+  try {
+    const result = await prisma.user.upsert({
+      where: { telegramUserId: BigInt(telegramUserId) },
+      update: {
+        firstName,
+        username: username || null,
+      },
+      create: {
+        telegramUserId: BigInt(telegramUserId),
+        firstName,
+        username: username || null,
+      },
+    });
+    console.log(`[DB] ensureUser success - userId=${result.id}`);
+    return result;
+  } catch (err) {
+    console.error('[DB] ensureUser error:', err);
+    throw err;
+  }
 }
