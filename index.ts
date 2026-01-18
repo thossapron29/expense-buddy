@@ -6,6 +6,11 @@ import { prisma, ensureUser } from "./src/db.js";
 import { startOfDay, startOfWeek, startOfMonth, endOfDay } from "date-fns";
 import type { Transaction } from "@prisma/client";
 import express from "express";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const bot = new Bot(process.env.BOT_TOKEN!);
 
@@ -48,6 +53,8 @@ shopping 299 เสื้อ
 /last หรือ ล่าสุด - รายการล่าสุด 5 รายการ
 /undo หรือ ยกเลิก - ยกเลิกรายการล่าสุด
 
+📊 /dashboard - เปิด Dashboard แสดงกราฟและสรุปรายจ่าย
+
 ❓ /help - แสดงคู่มือนี้
 `;
 
@@ -60,6 +67,26 @@ bot.command("start", async (ctx) => {
 
 bot.command("help", async (ctx) => {
   await ctx.reply(HELP_MESSAGE, { parse_mode: "Markdown" });
+});
+
+// Dashboard command
+bot.command("dashboard", async (ctx) => {
+  const webhookUrl = process.env.WEBHOOK_URL || process.env.RENDER_EXTERNAL_URL;
+  
+  if (webhookUrl) {
+    // Production: send web app button (Telegram Mini App)
+    const dashboardUrl = `${webhookUrl.replace(/\/$/, '')}/dashboard`;
+    const keyboard = new InlineKeyboard().webApp("📊 Open Dashboard", dashboardUrl);
+    await ctx.reply(
+      "📊 **Dashboard**\n\nดูกราฟและสรุปรายจ่ายของคุณ:\n\nคลิกปุ่มด้านล่างเพื่อเปิด Dashboard",
+      { reply_markup: keyboard, parse_mode: "Markdown" }
+    );
+  } else {
+    // Local dev: send localhost link
+    await ctx.reply(
+      "📊 **Dashboard (Local Dev)**\n\nเปิด Dashboard ที่:\nhttp://localhost:3000/dashboard\n\n(ใช้งานได้เฉพาะบนเครื่อง local)"
+    );
+  }
 });
 
 // Today summary
@@ -289,9 +316,156 @@ async function handleUndo(ctx: any) {
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Serve static files (dashboard)
+app.use(express.static("public"));
+
 // Health check endpoint
 app.get("/", (req, res) => {
-  res.send("Bot is running!");
+  res.send("Bot is running! Visit /dashboard for the dashboard.");
+});
+
+// Dashboard route
+app.get("/dashboard", (req, res) => {
+  res.sendFile(__dirname + "/public/dashboard.html");
+});
+
+// API: Get all users
+app.get("/api/users", async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        firstName: true,
+        username: true,
+        telegramUserId: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    // Convert BigInt to string for JSON serialization
+    const serializedUsers = users.map(u => ({
+      ...u,
+      telegramUserId: u.telegramUserId.toString(),
+    }));
+    res.json(serializedUsers);
+  } catch (error) {
+    console.error("[API] Error fetching users:", error);
+    res.status(500).json({ error: "Failed to fetch users" });
+  }
+});
+
+// API: Get user by Telegram ID
+app.get("/api/user-by-telegram/:telegramId", async (req, res) => {
+  try {
+    const telegramId = BigInt(req.params.telegramId);
+    const user = await prisma.user.findUnique({
+      where: { telegramUserId: telegramId },
+      select: {
+        id: true,
+        firstName: true,
+        username: true,
+        telegramUserId: true,
+      },
+    });
+    
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    res.json({
+      ...user,
+      telegramUserId: user.telegramUserId.toString(),
+    });
+  } catch (error) {
+    console.error("[API] Error fetching user by Telegram ID:", error);
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+// API: Get summary for a user
+app.get("/api/summary/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const period = req.query.period as string || "today";
+    
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (period) {
+      case "today":
+        startDate = startOfDay(now);
+        break;
+      case "week":
+        startDate = startOfWeek(now, { weekStartsOn: 1 });
+        break;
+      case "month":
+        startDate = startOfMonth(now);
+        break;
+      default:
+        startDate = startOfDay(now);
+    }
+    
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        userId,
+        occurredAt: {
+          gte: startDate,
+          lte: endOfDay(now),
+        },
+      },
+      orderBy: { occurredAt: "desc" },
+    });
+    
+    const total = transactions.reduce((sum, t) => sum + t.amountCents / 100, 0);
+    const average = transactions.length > 0 ? total / transactions.length : 0;
+    
+    // Group by category
+    const categoryMap: Record<string, number> = {};
+    transactions.forEach((t) => {
+      categoryMap[t.category] = (categoryMap[t.category] || 0) + t.amountCents / 100;
+    });
+    
+    const categories = Object.entries(categoryMap)
+      .map(([category, amount]) => {
+        const display = getCategoryDisplay(category as any);
+        return {
+          name: display.en,
+          emoji: display.en.split(" ")[0], // Extract emoji
+          amount: Math.round(amount * 100) / 100,
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+    
+    const topCategory = categories[0] || null;
+    
+    // Format transactions
+    const formattedTransactions = transactions.slice(0, 10).map((t) => {
+      const display = getCategoryDisplay(t.category as any);
+      return {
+        category: display.en.replace(/^\S+\s/, ""), // Remove emoji
+        categoryEmoji: display.en.split(" ")[0],
+        amount: Math.round(t.amountCents / 100 * 100) / 100,
+        description: t.description,
+        date: new Date(t.occurredAt).toLocaleString("th-TH", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      };
+    });
+    
+    res.json({
+      total: Math.round(total * 100) / 100,
+      average: Math.round(average * 100) / 100,
+      transactionCount: transactions.length,
+      topCategory,
+      categories,
+      transactions: formattedTransactions,
+    });
+  } catch (error) {
+    console.error("[API] Error fetching summary:", error);
+    res.status(500).json({ error: "Failed to fetch summary" });
+  }
 });
 
 // Webhook endpoint

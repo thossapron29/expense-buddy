@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Dashboard</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--tg-theme-bg-color, linear-gradient(135deg, #667eea 0%, #764ba2 100%));
+      color: var(--tg-theme-text-color, #333);
+      min-height: 100vh;
+      padding: 20px;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      text-align: center;
+      color: white;
+      margin-bottom: 30px;
+    }
+    
+    .header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+    }
+    
+    .header p {
+      opacity: 0.9;
+      font-size: 1.1rem;
+    }
+    
+    .user-selector {
+      background: white;
+      border-radius: 15px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    
+    .user-selector label {
+      font-weight: 600;
+      margin-right: 10px;
+    }
+    
+    .user-selector select {
+      padding: 10px 15px;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      font-size: 1rem;
+      min-width: 200px;
+      cursor: pointer;
+    }
+    
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .tab {
+      background: rgba(255,255,255,0.2);
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 1rem;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    
+    .tab:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .tab.active {
+      background: white;
+      color: #667eea;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    
+    .stat-card {
+      background: white;
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    
+    .stat-card h3 {
+      color: #667eea;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 10px;
+    }
+    
+    .stat-card .value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 5px;
+    }
+    
+    .stat-card .label {
+      color: #888;
+      font-size: 0.9rem;
+    }
+    
+    .categories {
+      background: white;
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      margin-bottom: 30px;
+    }
+    
+    .categories h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+    }
+    
+    .category-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .category-item:last-child {
+      border-bottom: none;
+    }
+    
+    .category-name {
+      font-weight: 600;
+      font-size: 1.1rem;
+    }
+    
+    .category-amount {
+      font-size: 1.2rem;
+      color: #667eea;
+      font-weight: 700;
+    }
+    
+    .category-bar {
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    
+    .category-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width 0.5s ease;
+    }
+    
+    .transactions {
+      background: white;
+      border-radius: 15px;
+      padding: 25px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    
+    .transactions h2 {
+      color: #667eea;
+      margin-bottom: 20px;
+    }
+    
+    .transaction-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+    }
+    
+    .transaction-item:last-child {
+      border-bottom: none;
+    }
+    
+    .transaction-details {
+      flex: 1;
+    }
+    
+    .transaction-category {
+      font-weight: 600;
+      color: #333;
+    }
+    
+    .transaction-description {
+      color: #888;
+      font-size: 0.9rem;
+      margin-top: 4px;
+    }
+    
+    .transaction-date {
+      color: #aaa;
+      font-size: 0.85rem;
+    }
+    
+    .transaction-amount {
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: #667eea;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: white;
+      font-size: 1.2rem;
+    }
+    
+    .error {
+      background: #ff4444;
+      color: white;
+      padding: 20px;
+      border-radius: 15px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    
+    @media (max-width: 768px) {
+      .header h1 {
+        font-size: 1.8rem;
+      }
+      
+      .stats-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Expense Dashboard</h1>
+      <p id="userName">Loading...</p>
+    </div>
+    
+    <div class="tabs">
+      <button class="tab active" data-period="today">วันนี้ / Today</button>
+      <button class="tab" data-period="week">สัปดาห์นี้ / Week</button>
+      <button class="tab" data-period="month">เดือนนี้ / Month</button>
+    </div>
+    
+    <div id="content"></div>
+  </div>
+  
+  <script>
+    let currentUserId = null;
+    let currentPeriod = 'today';
+    let tgUser = null;
+    
+    // Initialize Telegram Web App
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      tgUser = tg.initDataUnsafe?.user;
+      
+      // Apply Telegram theme
+      document.body.style.background = tg.themeParams.bg_color || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+    }
+    
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (tgUser) {
+        // Telegram Web App mode: get user from initData
+        document.getElementById('userName').textContent = `สวัสดี ${tgUser.first_name}`;
+        await loadUserByTelegramId(tgUser.id);
+      } else {
+        // Fallback: browser mode (for testing)
+        document.getElementById('userName').textContent = 'Browser Mode - Loading users...';
+        await loadUsers();
+      }
+      setupEventListeners();
+    });
+    
+    // Load user by Telegram ID
+    async function loadUserByTelegramId(telegramId) {
+      try {
+        const response = await fetch(`/api/user-by-telegram/${telegramId}`);
+        const user = await response.json();
+        
+        if (user && user.id) {
+          currentUserId = user.id;
+          loadDashboard();
+        } else {
+          showError('User not found. Please start the bot first with /start');
+        }
+      } catch (error) {
+        console.error('Error loading user:', error);
+        showError('Failed to load user data');
+      }
+    }
+    
+    // Load users
+    async function loadUsers() {
+      try {
+        const response = await fetch('/api/users');
+        const users = await response.json();
+        
+        const select = document.getElementById('userSelect');
+        select.innerHTML = users.length === 0 
+          ? '<option value="">No users found</option>'
+          : users.map(u => `<option value="${u.id}">${u.firstName} (@${u.username || 'N/A'})</option>`).join('');
+        
+        if (users.length > 0) {
+          currentUserId = users[0].id;
+          loadDashboard();
+        }
+      } catch (error) {
+        console.error('Error loading users:', error);
+        showError('Failed to load users');
+      }
+    }
+    
+    // Setup event listeners
+    function setupEventListeners() {
+      const userSelect = document.getElementById('userSelect');
+      if (userSelect) {
+        userSelect.addEventListener('change', (e) => {
+          currentUserId = e.target.value;
+          if (currentUserId) loadDashboard();
+        });
+      }
+      
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          e.target.classList.add('active');
+          currentPeriod = e.target.dataset.period;
+          loadDashboard();
+        });
+      });
+    }
+    
+    // Load dashboard data
+    async function loadDashboard() {
+      if (!currentUserId) return;
+      
+      const content = document.getElementById('content');
+      content.innerHTML = '<div class="loading">Loading...</div>';
+      
+      try {
+        const response = await fetch(`/api/summary/${currentUserId}?period=${currentPeriod}`);
+        const data = await response.json();
+        
+        renderDashboard(data);
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+        showError('Failed to load dashboard data');
+      }
+    }
+    
+    // Render dashboard
+    function renderDashboard(data) {
+      const content = document.getElementById('content');
+      
+      const html = `
+        <div class="stats-grid">
+          <div class="stat-card">
+            <h3>Total Spent</h3>
+            <div class="value">฿${data.total.toLocaleString()}</div>
+            <div class="label">${data.transactionCount} transactions</div>
+          </div>
+          <div class="stat-card">
+            <h3>Average</h3>
+            <div class="value">฿${data.average.toLocaleString()}</div>
+            <div class="label">per transaction</div>
+          </div>
+          <div class="stat-card">
+            <h3>Top Category</h3>
+            <div class="value">${data.topCategory?.name || 'N/A'}</div>
+            <div class="label">฿${data.topCategory?.amount?.toLocaleString() || 0}</div>
+          </div>
+        </div>
+        
+        ${data.categories.length > 0 ? `
+          <div class="categories">
+            <h2>📈 Categories Breakdown</h2>
+            ${data.categories.map(cat => `
+              <div class="category-item">
+                <div style="flex: 1;">
+                  <div class="category-name">${cat.emoji} ${cat.name}</div>
+                  <div class="category-bar">
+                    <div class="category-bar-fill" style="width: ${(cat.amount / data.total * 100)}%"></div>
+                  </div>
+                </div>
+                <div class="category-amount">฿${cat.amount.toLocaleString()}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+        
+        ${data.transactions.length > 0 ? `
+          <div class="transactions">
+            <h2>📝 Recent Transactions</h2>
+            ${data.transactions.map(t => `
+              <div class="transaction-item">
+                <div class="transaction-details">
+                  <div class="transaction-category">${t.categoryEmoji} ${t.category}</div>
+                  ${t.description ? `<div class="transaction-description">${t.description}</div>` : ''}
+                  <div class="transaction-date">${t.date}</div>
+                </div>
+                <div class="transaction-amount">฿${t.amount.toLocaleString()}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : '<div class="transactions"><p>No transactions found</p></div>'}
+      `;
+      
+      content.innerHTML = html;
+    }
+    
+    // Show error
+    function showError(message) {
+      const content = document.getElementById('content');
+      content.innerHTML = `<div class="error">${message}</div>`;
+    }
+  </script>
+</body>
+</html>
